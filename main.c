@@ -14,7 +14,7 @@
 
 #include <espressif/esp_sta.h>
 #include <espressif/esp_wifi.h>
-
+#include <timers.h>
 //#include <paho_mqtt_c/MQTTESP8266.h>
 //#include <paho_mqtt_c/MQTTClient.h>
 
@@ -29,12 +29,12 @@
 static int wifi_alive = 0;
 
 /* pin config */
-const int input_gpio = 5;
-const int anti_rebound = 5;
+const int input_gpio = 12;
+const int anti_rebound = 0;
 const int active = 0; /* active == 0 for active low */
 //const gpio_inttype_t int_type = GPIO_INTTYPE_LEVEL_LOW;
-const gpio_inttype_t int_type = GPIO_INTTYPE_EDGE_POS;
-
+const gpio_inttype_t int_type = GPIO_INTTYPE_EDGE_ANY;
+TimerHandle_t timer_handle;
 
 static void wifi_task(void *pvParameters) {
     uint8_t status = 0;
@@ -85,8 +85,16 @@ static QueueHandle_t tsqueue;
 
 void gpio_intr_handler(uint8_t gpio_num)
 {
-    uint32_t now = xTaskGetTickCountFromISR();
-    xQueueSendToBackFromISR(tsqueue, &now, NULL);
+  BaseType_t plouf;
+  xTimerResetFromISR(timer_handle, &plouf);
+}
+
+void timer_handler( TimerHandle_t timer) {
+    if( !gpio_read(input_gpio)) {
+      uint32_t now = xTaskGetTickCountFromISR();
+      xQueueSendToBackFromISR(tsqueue, &now, NULL);
+    }
+
 }
 
 void buttonIntTask(void *pvParameters)
@@ -113,12 +121,14 @@ void user_init(void) {
     uart_set_baud(0, 115200);
     printf("SDK version: %s, free heap %u\n", sdk_system_get_sdk_version(),
             xPortGetFreeHeapSize());
-
+    printf("TICKS:  %d\n", pdMS_TO_TICKS(1000));
     gpio_enable(GPIO_LED, GPIO_OUTPUT);
     gpio_enable(input_gpio, GPIO_INPUT);
     gpio_write(GPIO_LED, 1);
 
+    timer_handle = xTimerCreate("xtimer", 1, false, 0, timer_handler);
+
     tsqueue = xQueueCreate(2, sizeof(uint32_t));
-    xTaskCreate(&wifi_task, "wifi_task", 256, NULL, 2, NULL);
+//    xTaskCreate(&wifi_task, "wifi_task", 256, NULL, 2, NULL);
     xTaskCreate(buttonIntTask, "buttonIntTask", 256, &tsqueue, 2, NULL);
 }
