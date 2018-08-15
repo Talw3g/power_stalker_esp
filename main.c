@@ -7,6 +7,7 @@
 #include <task.h>
 #include <ssid_config.h>
 #include <queue.h>
+#include <math.h>
 
 #include <espressif/esp_sta.h>
 #include <espressif/esp_wifi.h>
@@ -21,38 +22,23 @@
 /* You can use http://test.mosquitto.org/ to test mqtt_client instead
  * of setting up your own MQTT server */
 #define MQTT_HOST ("10.0.0.40")
-#define MQTT_PORT 51883
+#define MQTT_PORT 1883
 
 #define MQTT_USER NULL
 #define MQTT_PASS NULL
 
 SemaphoreHandle_t wifi_alive;
 QueueHandle_t publish_queue;
-#define PUB_MSG_LEN 64
+#define PUB_MSG_LEN 48
 
-/* pin config */
+/* flash pin config */
 const int input_gpio = 12;
 const int active = 0; /* active == 0 for active low */
-//const gpio_inttype_t int_type = GPIO_INTTYPE_LEVEL_LOW;
 const gpio_inttype_t int_type = GPIO_INTTYPE_EDGE_ANY;
 TimerHandle_t timer_handle;
 
+const int led_gpio = 2;
 
-static void  beat_task(void *pvParameters)
-{
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-    char msg[PUB_MSG_LEN];
-    int count = 0;
-
-    while (1) {
-        vTaskDelayUntil(&xLastWakeTime, 10000 / portTICK_PERIOD_MS);
-        printf("beat\r\n");
-        snprintf(msg, PUB_MSG_LEN, "Beat %d\r\n", count++);
-        if (xQueueSend(publish_queue, (void *)msg, 0) == pdFALSE) {
-            printf("Publish queue overflow.\r\n");
-        }
-    }
-}
 
 static void  topic_received(mqtt_message_data_t *md)
 {
@@ -145,24 +131,29 @@ static void  mqtt_task(void *pvParameters)
 
         while(1){
 
-            char msg[PUB_MSG_LEN - 1] = "\0";
+            char msg[PUB_MSG_LEN] = "\0";
             while(xQueueReceive(publish_queue, (void *)msg, 0) ==
                   pdTRUE){
                 printf("got message to publish\r\n");
                 mqtt_message_t message;
                 message.payload = msg;
-                message.payloadlen = PUB_MSG_LEN;
+                message.payloadlen = strlen(msg);
                 message.dup = 0;
                 message.qos = MQTT_QOS1;
                 message.retained = 0;
-                ret = mqtt_publish(&client, "/beat", &message);
+                ret = mqtt_publish(&client, "power", &message);
+                if (ret != MQTT_SUCCESS ){
+                    printf("error while publishing message: %d\n", ret );
+                    break;
+                }
+                ret = mqtt_publish(&client, "chezjd/devices/LTS68c63ac36d81/ssdsr/set", &message);
                 if (ret != MQTT_SUCCESS ){
                     printf("error while publishing message: %d\n", ret );
                     break;
                 }
             }
 
-            ret = mqtt_yield(&client, 1000);
+            ret = mqtt_yield(&client, 500);
             if (ret == MQTT_DISCONNECTED)
                 break;
         }
@@ -236,24 +227,57 @@ void timer_handler( TimerHandle_t timer) {
 
 }
 
-void buttonIntTask(void *pvParameters)
+struct Flash {
+  uint32_t previous_ts;
+  uint32_t ts;
+  float power;
+};
+
+void get_inst_power(struct Flash *flash) {
+  if(!flash->previous_ts) {
+    printf("First flash!");
+    flash->previous_ts = flash->ts;
+    flash->power = NAN;
+    return;
+  }
+  else if(flash->previous_ts == flash->ts) {
+    printf("Duplication");
+    flash->power = NAN;
+  }
+  uint32_t delta = flash->ts - flash->previous_ts;
+  float power = 3600000. / delta;
+  flash->power = power;
+  flash->previous_ts = flash->ts;
+}
+
+void blink_led(void) {
+  gpio_write(led_gpio, 0);
+  vTaskDelay(20 / portTICK_PERIOD_MS);
+  gpio_write(led_gpio, 1);
+  vTaskDelay(20 / portTICK_PERIOD_MS);
+}
+
+void flashIntTask(void *pvParameters)
 {
-    char msg[PUB_MSG_LEN] = {'\0'};
-    printf("Waiting for button press interrupt on gpio %d...\r\n", input_gpio);
+    //char msg[PUB_MSG_LEN] = {'\0'};
+    char msg[4] = {'\0'};
     QueueHandle_t *tsqueue = (QueueHandle_t *)pvParameters;
     gpio_set_interrupt(input_gpio, int_type, gpio_intr_handler);
+    gpio_enable(led_gpio, GPIO_OUTPUT);
+    gpio_write(led_gpio, 1);
 
-    uint32_t count = 0;
+    struct Flash flash;
+    flash.previous_ts = 0;
     while(1) {
-        uint32_t button_ts;
-        xQueueReceive(*tsqueue, &button_ts, portMAX_DELAY);
-        count ++;
-        button_ts *= portTICK_PERIOD_MS;
-        snprintf(msg, PUB_MSG_LEN, "Flash! %dms\nCons: %dWh\n", button_ts, count);
-        if (xQueueSend(publish_queue, (void *)msg, 0) == pdFALSE) {
-            printf("Publish queue overflow.\r\n");
-        }
-        printf("Button interrupt fired at %dms\r\n", button_ts);
+      xQueueReceive(*tsqueue, &flash.ts, portMAX_DELAY);
+      blink_led();
+      flash.ts *= portTICK_PERIOD_MS;
+      get_inst_power(&flash);
+      snprintf(msg, PUB_MSG_LEN, "{\"offset\":0, \"length\":4, \"value\":%.2f}", flash.power);
+      if (xQueueSend(publish_queue, (void *)msg, 0) == pdFALSE) {
+          printf("Publish queue overflow.\r\n");
+      }
+      printf("flash interrupt fired at %dms\r\n", flash.ts);
     }
 }
 
@@ -266,12 +290,10 @@ void user_init(void)
     timer_handle = xTimerCreate("xtimer", 1, false, 0, timer_handler);
 
     tsqueue = xQueueCreate(2, sizeof(uint32_t));
-//    xTaskCreate(&wifi_task, "wifi_task", 256, NULL, 2, NULL);
 
     vSemaphoreCreateBinary(wifi_alive);
-    publish_queue = xQueueCreate(3, PUB_MSG_LEN);
+    publish_queue = xQueueCreate(10, PUB_MSG_LEN);
     xTaskCreate(&wifi_task, "wifi_task",  256, NULL, 2, NULL);
-//    xTaskCreate(&beat_task, "beat_task", 256, NULL, 3, NULL);
-    xTaskCreate(&mqtt_task, "mqtt_task", 1024, NULL, 4, NULL);
-    xTaskCreate(buttonIntTask, "buttonIntTask", 256, &tsqueue, 5, NULL);
+    xTaskCreate(&mqtt_task, "mqtt_task", 1024, NULL, 3, NULL);
+    xTaskCreate(flashIntTask, "flashIntTask", 1024, &tsqueue, 4, NULL);
 }
