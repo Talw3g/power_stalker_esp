@@ -1,2 +1,7 @@
 build/
 firmware/
+*.bak
+*.kicad_pcb-bak
+~$*
+_save*
+_autosave*
