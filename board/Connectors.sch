@@ -1,6 +1,6 @@
 EESchema Schematic File Version 4
 LIBS:power_stalker_esp-cache
-EELAYER 26 0
+EELAYER 29 0
 EELAYER END
 $Descr A4 11693 8268
 encoding utf-8
@@ -206,15 +206,15 @@ Wire Wire Line
 Connection ~ 2700 5650
 Wire Wire Line
 	2700 5650 3050 5650
-Text GLabel 4950 1600 0    50   Output ~ 0
+Text GLabel 4950 2500 0    50   Output ~ 0
 MASTER_RESET
 Text GLabel 4950 1700 0    50   Input ~ 0
 1Q0
 Text GLabel 4950 1800 0    50   Input ~ 0
 1Q1
-Text GLabel 4950 1900 0    50   Input ~ 0
+Text GLabel 4950 2300 0    50   Input ~ 0
 1Q2
-Text GLabel 4950 2000 0    50   Input ~ 0
+Text GLabel 4950 2400 0    50   Input ~ 0
 1Q3
 NoConn ~ 3150 1600
 NoConn ~ 3150 1800
@@ -226,9 +226,6 @@ NoConn ~ 3150 2300
 NoConn ~ 3150 2400
 NoConn ~ 3150 2700
 NoConn ~ 3150 2800
-NoConn ~ 4950 2300
-NoConn ~ 4950 2400
-NoConn ~ 4950 2500
 NoConn ~ 4950 2600
 NoConn ~ 4950 2700
 NoConn ~ 4950 2800
@@ -246,4 +243,7 @@ $EndComp
 Connection ~ 2050 2600
 Wire Wire Line
 	2050 2600 1750 2600
+NoConn ~ 4950 2000
+NoConn ~ 4950 1900
+NoConn ~ 4950 1600
 $EndSCHEMATC
