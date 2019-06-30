@@ -6,3 +6,5 @@ _autosave*
 *.ods
 *.csv
 *.xml
+build
+firmware
