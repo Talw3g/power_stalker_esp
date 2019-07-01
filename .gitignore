@@ -8,3 +8,5 @@ _autosave*
 *.xml
 build
 firmware
+fp-info-cache
+

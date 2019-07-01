@@ -206,13 +206,13 @@ Wire Wire Line
 Connection ~ 2700 5650
 Wire Wire Line
 	2700 5650 3050 5650
-Text GLabel 4950 2500 0    50   Output ~ 0
+Text GLabel 4950 2300 0    50   Output ~ 0
 MASTER_RESET
 Text GLabel 4950 1700 0    50   Input ~ 0
 1Q0
 Text GLabel 4950 1800 0    50   Input ~ 0
 1Q1
-Text GLabel 4950 2300 0    50   Input ~ 0
+Text GLabel 4950 2500 0    50   Input ~ 0
 1Q2
 Text GLabel 4950 2400 0    50   Input ~ 0
 1Q3
