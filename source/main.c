@@ -240,7 +240,7 @@ void get_inst_power(struct Flash *flash) {
     flash->power = NAN;
     return;
   }
-  else if(flash->previous_ts == flash->ts) {
+  else if(flash->ts - flash->previous_ts < 300.) {
     printf("Duplication");
     flash->power = NAN;
   }
