@@ -6,5 +6,6 @@ _autosave*
 *.ods
 *.csv
 *.xml
+*.swp
 build
 firmware

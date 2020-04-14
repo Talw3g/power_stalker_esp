@@ -92,7 +92,7 @@ static void  mqtt_task(void *pvParameters)
 
     mqtt_network_new( &network );
     memset(mqtt_client_id, 0, sizeof(mqtt_client_id));
-    strcpy(mqtt_client_id, "ESP-");
+    strcpy(mqtt_client_id, "PwSTLK-");
     strcat(mqtt_client_id, get_my_id());
 
     while(1) {
@@ -104,6 +104,7 @@ static void  mqtt_task(void *pvParameters)
         if( ret ){
             printf("error: %d\n\r", ret);
             taskYIELD();
+            vTaskDelay( 1000 / portTICK_PERIOD_MS );
             continue;
         }
         printf("done\n\r");
@@ -146,19 +147,16 @@ static void  mqtt_task(void *pvParameters)
                     printf("error while publishing message: %d\n", ret );
                     break;
                 }
-                ret = mqtt_publish(&client, "chezjd/devices/LTS68c63ac36d81/ssdsr/set", &message);
-                if (ret != MQTT_SUCCESS ){
-                    printf("error while publishing message: %d\n", ret );
-                    break;
-                }
             }
 
-            ret = mqtt_yield(&client, 500);
+            ret = mqtt_yield(&client, 50);
             if (ret == MQTT_DISCONNECTED)
-                break;
+              break;
+            vTaskDelay( 10 / portTICK_PERIOD_MS );
         }
         printf("Connection dropped, request restart\n\r");
         mqtt_network_disconnect(&network);
+        xSemaphoreGive( wifi_alive );
         taskYIELD();
     }
 }
@@ -235,14 +233,15 @@ struct Flash {
 
 void get_inst_power(struct Flash *flash) {
   if(!flash->previous_ts) {
-    printf("First flash!");
+    printf("First flash!\n\r");
     flash->previous_ts = flash->ts;
     flash->power = NAN;
     return;
   }
   else if(flash->ts - flash->previous_ts < 300.) {
-    printf("Duplication");
+    printf("Duplication\n\r");
     flash->power = NAN;
+    return;
   }
   uint32_t delta = flash->ts - flash->previous_ts;
   float power = 3600000. / delta;
@@ -267,24 +266,26 @@ void flashIntTask(void *pvParameters)
     gpio_write(led_gpio, 1);
 
     struct Flash flash;
-    flash.previous_ts = 0;
+//    flash.previous_ts = 0;
     while(1) {
       xQueueReceive(*tsqueue, &flash.ts, portMAX_DELAY);
       blink_led();
       flash.ts *= portTICK_PERIOD_MS;
       get_inst_power(&flash);
-      snprintf(msg, PUB_MSG_LEN, "{\"offset\":0, \"length\":4, \"value\":%.2f}", flash.power);
-      if (xQueueSend(publish_queue, (void *)msg, 0) == pdFALSE) {
-          printf("Publish queue overflow.\r\n");
+      if(!isnan(flash.power)) {
+        snprintf(msg, PUB_MSG_LEN, "{\"offset\":0, \"length\":4, \"value\":%.2f}", flash.power);
+        if (xQueueSend(publish_queue, (void *)msg, 0) == pdFALSE) {
+            printf("Publish queue overflow.\r\n");
+        }
+        printf("Flash interrupt fired at %dms\r\n    Power: %.2fW\n\r", flash.ts, flash.power);
       }
-      printf("flash interrupt fired at %dms\r\n", flash.ts);
     }
 }
 
 void user_init(void)
 {
     uart_set_baud(0, 115200);
-    printf("SDK version:%s\n", sdk_system_get_sdk_version());
+    printf("SDK version:%s\n\r", sdk_system_get_sdk_version());
     gpio_enable(input_gpio, GPIO_INPUT);
 
     timer_handle = xTimerCreate("xtimer", 1, false, 0, timer_handler);
